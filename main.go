@@ -2,30 +2,43 @@ package main
 
 import (
 	"encoding/json"
+	"os"
 	"fmt"
 	"log"
 	"net/http"
 	"github.com/gorilla/mux"
 	"github.com/nu7hatch/gouuid"
+	"github.com/jltorresm/peerserver/types"
+	"github.com/jltorresm/peerserver/middleware"
 )
 
-type Topic struct {
-	Uuid     string    `json:"uuid"`
-	Content  *Content  `json:"content,omitempty"`
-	Viewport *Viewport `json:"viewport,omitempty"`
+const configFilename string = "config.json"
+
+var topics = make(map[string]types.Topic)
+var config = types.Config{}
+
+func init() {
+	config = getConfig()
 }
 
-type Content struct {
-	Title string `json:"title"`
-	Data string `json:"data"`
-}
+func getConfig() types.Config {
+	if _, err := os.Stat(configFilename); os.IsNotExist(err) {
+		log.Fatal(fmt.Sprintf("[FATAL] config file %s does not exist.", configFilename));
+	}
 
-type Viewport struct {
-	X float32 `json:"x"`
-	Y float32 `json:"y"`
-}
+	file, _ := os.Open(configFilename)
+	defer file.Close()
 
-var topics = make(map[string]Topic)
+	decoder := json.NewDecoder(file)
+	configuration := types.Config{}
+	err := decoder.Decode(&configuration)
+
+	if err != nil {
+		fmt.Println("error:", err)
+	}
+
+	return configuration
+}
 
 func PostTopic(writer http.ResponseWriter, request *http.Request) {
 	// Generate a uuid for the new topic
@@ -37,14 +50,14 @@ func PostTopic(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	// Create the topic struct and save it in memory
-	topics[uuid.String()] = Topic{Uuid: uuid.String(), Content: &Content{Title: "", Data: ""}, Viewport: &Viewport{X: 0, Y: 0}}
+	topics[uuid.String()] = types.Topic{Uuid: uuid.String(), Content: &types.Content{Title: "", Data: ""}, Viewport: &types.Viewport{X: 0, Y: 0}}
 
 	// Send
 	json.NewEncoder(writer).Encode(topics[uuid.String()])
 }
 
 func GetTopic(writer http.ResponseWriter, request *http.Request) {
-	var response []Topic
+	var response []types.Topic
 
 	for _, topic := range topics {
 		response = append(response, topic)
@@ -60,7 +73,7 @@ func DeleteTopic(writer http.ResponseWriter, request *http.Request) {
 }
 
 func PutTopicContent(writer http.ResponseWriter, request *http.Request) {
-	var content Content
+	var content types.Content
 	params := mux.Vars(request)
 	json.NewDecoder(request.Body).Decode(&content)
 
@@ -76,7 +89,7 @@ func GetTopicContent(writer http.ResponseWriter, request *http.Request) {
 }
 
 func PutTopicViewport(writer http.ResponseWriter, request *http.Request) {
-	var viewport Viewport
+	var viewport types.Viewport
 	params := mux.Vars(request)
 	json.NewDecoder(request.Body).Decode(&viewport)
 
@@ -91,26 +104,8 @@ func GetTopicViewport(writer http.ResponseWriter, request *http.Request) {
 	json.NewEncoder(writer).Encode(topics[params["uuid"]].Viewport)
 }
 
-func loggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-
-		log.Printf("[%s] %s", request.Method, request.RequestURI)
-
-		next.ServeHTTP(writer, request)
-	})
-}
-
-func headerNormalizerMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writer.Header().Set("Content-Type", "text/json; charset=utf-8")
-		next.ServeHTTP(writer, request)
-	})
-}
-
 // Main function
 func main() {
-	topics["030fffa0-8ebb-11e8-b26b-926d69cab634"] = Topic{Uuid: "030fffa0-8ebb-11e8-b26b-926d69cab634", Content: &Content{Title: "Test Topic", Data: "This is the data of the remote buffer"}, Viewport: &Viewport{X: 1, Y: 1}}
-
 	router := mux.NewRouter()
 
 	// Set the routes
@@ -123,8 +118,9 @@ func main() {
 	router.HandleFunc("/topic/{uuid}/viewport", GetTopicViewport).Methods("GET")
 
 	// Add a few middlewares
-	router.Use(headerNormalizerMiddleware)
-	router.Use(loggingMiddleware)
+	router.Use(middleware.HeaderNormalizerMiddleware)
+	router.Use(middleware.LoggingMiddleware)
 
-	log.Fatal(http.ListenAndServe(":8000", router))
+	log.Println(fmt.Sprintf("[INFO] Listening in %s", config.Server.Url))
+	log.Fatal(http.ListenAndServe(config.Server.Url, router))
 }
