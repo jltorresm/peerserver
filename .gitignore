@@ -1,5 +1,8 @@
 # Ignore local deps
 vendor
 
-# ignore bin
+# Ignore bin
 peerserver
+
+# Ignore local config
+config.json
