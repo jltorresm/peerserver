@@ -1,6 +1,6 @@
 # Peer Server
 
-Works along with the [peer](#) Sublime Text plugin.
+Works along with the [peer](https://github.com/jltorresm/peer) Sublime Text plugin.
 
 It serves as a relay for content for peer programming sessions.
 
