@@ -2,14 +2,14 @@ package main
 
 import (
 	"encoding/json"
-	"os"
 	"fmt"
+	"github.com/gorilla/mux"
+	"github.com/jltorresm/peerserver/middleware"
+	"github.com/jltorresm/peerserver/types"
+	"github.com/nu7hatch/gouuid"
 	"log"
 	"net/http"
-	"github.com/gorilla/mux"
-	"github.com/nu7hatch/gouuid"
-	"github.com/jltorresm/peerserver/types"
-	"github.com/jltorresm/peerserver/middleware"
+	"os"
 )
 
 const configFilename string = "config.json"
@@ -23,7 +23,7 @@ func init() {
 
 func getConfig() types.Config {
 	if _, err := os.Stat(configFilename); os.IsNotExist(err) {
-		log.Fatal(fmt.Sprintf("[FATAL] config file %s does not exist.", configFilename));
+		log.Fatal(fmt.Sprintf("[FATAL] config file %s does not exist.", configFilename))
 	}
 
 	file, _ := os.Open(configFilename)
@@ -50,7 +50,12 @@ func PostTopic(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	// Create the topic struct and save it in memory
-	topics[uuid.String()] = types.Topic{Uuid: uuid.String(), Content: &types.Content{Title: "", Data: ""}, Viewport: &types.Viewport{X: 0, Y: 0}}
+	topics[uuid.String()] = types.Topic{
+		Uuid:      uuid.String(),
+		Content:   &types.Content{Title: "", Data: ""},
+		Viewport:  &types.Viewport{X: 0, Y: 0},
+		Selection: &types.Selections{},
+	}
 
 	// Send
 	json.NewEncoder(writer).Encode(topics[uuid.String()])
@@ -104,11 +109,48 @@ func GetTopicViewport(writer http.ResponseWriter, request *http.Request) {
 	json.NewEncoder(writer).Encode(topics[params["uuid"]].Viewport)
 }
 
+func PutTopicSelection(writer http.ResponseWriter, request *http.Request) {
+	var selections types.Selections
+	params := mux.Vars(request)
+	json.NewDecoder(request.Body).Decode(&selections)
+
+	*(topics[params["uuid"]].Selection) = selections
+
+	writer.WriteHeader(http.StatusNoContent)
+}
+
+func GetTopicSelection(writer http.ResponseWriter, request *http.Request) {
+	params := mux.Vars(request)
+	json.NewEncoder(writer).Encode(topics[params["uuid"]].Selection)
+}
+
+func GetStatus(writer http.ResponseWriter, request *http.Request) {
+	type sessionSummary struct {
+		Uuid  string
+		Title string
+	}
+
+	status := struct {
+		Count    int
+		Sessions []sessionSummary
+	}{
+		Count:    len(topics),
+		Sessions: []sessionSummary{},
+	}
+
+	for _, t := range topics {
+		status.Sessions = append(status.Sessions, sessionSummary{Uuid: t.Uuid, Title: t.Content.Title})
+	}
+
+	json.NewEncoder(writer).Encode(status)
+}
+
 // Main function
 func main() {
 	router := mux.NewRouter()
 
 	// Set the routes
+	router.HandleFunc("/status", GetStatus).Methods("GET")
 	router.HandleFunc("/topic", PostTopic).Methods("POST")
 	router.HandleFunc("/topic", GetTopic).Methods("GET")
 	router.HandleFunc("/topic/{uuid}", DeleteTopic).Methods("DELETE")
@@ -116,6 +158,8 @@ func main() {
 	router.HandleFunc("/topic/{uuid}/content", GetTopicContent).Methods("GET")
 	router.HandleFunc("/topic/{uuid}/viewport", PutTopicViewport).Methods("PUT")
 	router.HandleFunc("/topic/{uuid}/viewport", GetTopicViewport).Methods("GET")
+	router.HandleFunc("/topic/{uuid}/selection", PutTopicSelection).Methods("PUT")
+	router.HandleFunc("/topic/{uuid}/selection", GetTopicSelection).Methods("GET")
 
 	// Add a few middlewares
 	router.Use(middleware.HeaderNormalizerMiddleware)

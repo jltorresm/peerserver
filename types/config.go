@@ -7,4 +7,3 @@ type Config struct {
 type server struct {
 	Url string
 }
-

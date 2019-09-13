@@ -30,4 +30,5 @@ These points must be complete to tag an official version `1.0.0`. Everything bef
 1. Go to the project folder `cd $GOPATH/src/github.com/jltorresm/peerserver/`.
 1. Install dependencies by running `dep ensure`.
 1. Build the project `go build .`
+1. Add the config file: `cp default-config.json config.json`
 1. Run `./peerserver`.
